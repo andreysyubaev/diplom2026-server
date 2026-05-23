@@ -1,0 +1,44 @@
+# Используется для запуска ТОЛЬКО PostgreSQL локально для разработки.
+# Сам сервер удобнее запускать в hot-reload режиме через `dart_frog dev`.
+#
+# Запуск БД:   docker compose up -d
+# Остановка:   docker compose down
+# Очистка БД:  docker compose down -v   (удаляет volume с данными!)
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: college_app_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: college_app
+      POSTGRES_USER: college_user
+      POSTGRES_PASSWORD: college_pass
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U college_user -d college_app"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Опционально: pgAdmin для удобного просмотра БД через браузер
+  # Открыть: http://localhost:8081 (логин admin@college.local / admin)
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: college_app_pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@college.local
+      PGADMIN_DEFAULT_PASSWORD: admin
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+    ports:
+      - "8081:80"
+    depends_on:
+      - postgres
+
+volumes:
+  postgres_data:

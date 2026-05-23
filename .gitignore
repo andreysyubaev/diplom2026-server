@@ -1,0 +1,27 @@
+# Dart / Pub
+.dart_tool/
+.packages
+build/
+pubspec.lock
+.flutter-plugins
+.flutter-plugins-dependencies
+
+# Конфиги с секретами
+.env
+*.env.local
+
+# Загруженные файлы пользователей
+uploads/
+!uploads/.gitkeep
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Логи
+*.log
