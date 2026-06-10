@@ -10,6 +10,8 @@ class ResultRepository {
   final Database _db;
 
   /// Сохраняет результат и возвращает его.
+  /// Если у студента есть активная пересдача — сжигаем её и помечаем
+  /// попытку как is_retake + засчитываем «на оценку».
   Future<TestResult> save({
     required String studentId,
     required String subthemeId,
@@ -27,10 +29,22 @@ class ResultRepository {
     );
     final isFirst = prev.isEmpty;
 
+    // Активная пересдача?
+    final permissionDeleted = await _db.execute(
+      'DELETE FROM retake_permissions '
+      'WHERE student_id = @st AND subtheme_id = @sub RETURNING 1',
+      parameters: {'st': studentId, 'sub': subthemeId},
+    );
+    final isRetake = permissionDeleted.isNotEmpty;
+
+    // Попытка засчитывается «на оценку», если это первая ИЛИ пересдача.
+    final graded = isFirst || isRetake;
+
     final res = await _db.execute(
       'INSERT INTO results '
-      '(student_id, subtheme_id, test_id, score, max_score, percentage, grade, is_first_attempt, answers) '
-      'VALUES (@st,@sub,@t,@sc,@max,@p,@g,@f,@a::jsonb) '
+      '(student_id, subtheme_id, test_id, score, max_score, percentage, grade, '
+      ' is_first_attempt, is_retake, answers) '
+      'VALUES (@st,@sub,@t,@sc,@max,@p,@g,@f,@r,@a::jsonb) '
       'RETURNING id, student_id, subtheme_id, test_id, score, max_score, percentage, grade, '
       'is_first_attempt, completed_at',
       parameters: {
@@ -40,13 +54,53 @@ class ResultRepository {
         'sc': score,
         'max': maxScore,
         'p': percentage,
-        'g': grade,
+        'g': graded ? grade : null, // тренировка — оценка не выставляется
         'f': isFirst,
+        'r': isRetake,
         'a': jsonEncode(answers),
       },
     );
     final row = _namedRow(res.first, res.schema.columns);
     return TestResult.fromRow(row);
+  }
+
+  // ── разрешения на пересдачу ──────────────────────────────────────
+
+  Future<void> grantRetake({
+    required String studentId,
+    required String subthemeId,
+    required String grantedBy,
+  }) async {
+    await _db.execute(
+      'INSERT INTO retake_permissions (student_id, subtheme_id, granted_by) '
+      'VALUES (@s,@sub,@by) '
+      'ON CONFLICT (student_id, subtheme_id) DO UPDATE '
+      'SET granted_by = EXCLUDED.granted_by, granted_at = NOW()',
+      parameters: {'s': studentId, 'sub': subthemeId, 'by': grantedBy},
+    );
+  }
+
+  Future<void> revokeRetake({
+    required String studentId,
+    required String subthemeId,
+  }) async {
+    await _db.execute(
+      'DELETE FROM retake_permissions '
+      'WHERE student_id = @s AND subtheme_id = @sub',
+      parameters: {'s': studentId, 'sub': subthemeId},
+    );
+  }
+
+  Future<bool> hasRetake({
+    required String studentId,
+    required String subthemeId,
+  }) async {
+    final res = await _db.execute(
+      'SELECT 1 FROM retake_permissions '
+      'WHERE student_id = @s AND subtheme_id = @sub LIMIT 1',
+      parameters: {'s': studentId, 'sub': subthemeId},
+    );
+    return res.isNotEmpty;
   }
 
   /// Все результаты конкретного студента по конкретной подтеме.
@@ -58,7 +112,7 @@ class ResultRepository {
     var sql = 'SELECT r.id, r.student_id, NULL AS student_name, '
         'r.subtheme_id, sub.title AS subtheme_title, '
         'r.test_id, r.score, r.max_score, r.percentage, r.grade, '
-        'r.is_first_attempt, r.completed_at '
+        'r.is_first_attempt, r.is_retake, r.completed_at '
         'FROM results r LEFT JOIN subthemes sub ON sub.id = r.subtheme_id '
         'WHERE r.student_id = @st';
     if (subthemeId != null) {
@@ -78,7 +132,7 @@ class ResultRepository {
       'SELECT r.id, r.student_id, u.full_name AS student_name, '
       'r.subtheme_id, sub.title AS subtheme_title, '
       'r.test_id, r.score, r.max_score, r.percentage, r.grade, '
-      'r.is_first_attempt, r.completed_at '
+      'r.is_first_attempt, r.is_retake, r.completed_at '
       'FROM results r '
       'JOIN subthemes sub ON sub.id = r.subtheme_id '
       'JOIN themes th ON th.id = sub.theme_id '
@@ -92,13 +146,50 @@ class ResultRepository {
         .toList();
   }
 
+  /// Получить попытку по id + JSONB с ответами студента.
+  /// Возвращает null, если попытки нет.
+  Future<({TestResult result, Map<String, dynamic> answers})?> findByIdWithAnswers(
+    String resultId,
+  ) async {
+    final res = await _db.execute(
+      'SELECT r.id, r.student_id, u.full_name AS student_name, '
+      'r.subtheme_id, sub.title AS subtheme_title, '
+      'r.test_id, r.score, r.max_score, r.percentage, r.grade, '
+      'r.is_first_attempt, r.is_retake, r.completed_at, r.answers '
+      'FROM results r '
+      'JOIN subthemes sub ON sub.id = r.subtheme_id '
+      'JOIN users u ON u.id = r.student_id '
+      'WHERE r.id = @i',
+      parameters: {'i': resultId},
+    );
+    if (res.isEmpty) return null;
+    final row = _namedRow(res.first, res.schema.columns);
+    final result = TestResult.fromRow(row);
+    final answersRaw = row['answers'];
+    final answers = _decodeAnswers(answersRaw);
+    return (result: result, answers: answers);
+  }
+
+  static Map<String, dynamic> _decodeAnswers(Object? raw) {
+    if (raw == null) return const {};
+    if (raw is Map) return Map<String, dynamic>.from(raw);
+    if (raw is String) {
+      if (raw.isEmpty) return const {};
+      try {
+        final decoded = jsonDecode(raw);
+        if (decoded is Map) return Map<String, dynamic>.from(decoded);
+      } catch (_) {}
+    }
+    return const {};
+  }
+
   /// Все результаты по конкретной подтеме (для преподавателя).
   Future<List<TestResult>> listForSubtheme(String subthemeId) async {
     final res = await _db.execute(
       'SELECT r.id, r.student_id, u.full_name AS student_name, '
       'r.subtheme_id, sub.title AS subtheme_title, '
       'r.test_id, r.score, r.max_score, r.percentage, r.grade, '
-      'r.is_first_attempt, r.completed_at '
+      'r.is_first_attempt, r.is_retake, r.completed_at '
       'FROM results r '
       'JOIN subthemes sub ON sub.id = r.subtheme_id '
       'JOIN users u ON u.id = r.student_id '

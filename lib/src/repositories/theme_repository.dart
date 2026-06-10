@@ -85,6 +85,11 @@ class ThemeRepository {
       sets.add('scheduled_at = @sa');
       params['sa'] = scheduledAt;
     }
+    // Сбрасываем флаг «уже уведомили», чтобы шедулер заметил
+    // обновлённую дату/состояние.
+    if (visibility == ContentVisibility.scheduled || scheduledAt != null) {
+      sets.add('scheduled_notified = FALSE');
+    }
     if (sets.isEmpty) return (await findById(id))!;
     await _db.execute(
       'UPDATE themes SET ${sets.join(', ')} WHERE id = @i',

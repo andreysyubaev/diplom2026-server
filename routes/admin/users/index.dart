@@ -2,7 +2,8 @@
 // POST /admin/users               — создать преподавателя
 //
 // Тело POST:
-//   { "email": "...", "password": "...", "fullName": "...", "position": "доцент" }
+//   { "email": "...", "password": "...", "fullName": "...",
+//     "positionIds": ["<uuid>", "<uuid>"] }   // positionIds опционален
 
 import 'package:college_app_server/src/http/context.dart';
 import 'package:college_app_server/src/http/responses.dart';
@@ -43,11 +44,21 @@ Future<Response> _list(RequestContext context) async {
 Future<Response> _create(RequestContext context) async {
   return runSafely(() async {
     final body = await readJson(context.request);
+    final raw = body['positionIds'];
+    final positionIds = raw is List
+        ? raw.whereType<String>().toList()
+        : <String>[];
+    for (final pid in positionIds.toSet()) {
+      final p = await context.services.positions.findById(pid);
+      if (p == null) {
+        throw ApiError.notFound('Должность $pid не найдена');
+      }
+    }
     final user = await context.services.auth.createTeacher(
       email: body.reqString('email'),
       password: body.reqString('password'),
       fullName: body.reqString('fullName'),
-      position: body.optString('position'),
+      positionIds: positionIds,
     );
     return jsonOk(user.toJson(), status: 201);
   });

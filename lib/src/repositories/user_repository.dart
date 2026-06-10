@@ -1,4 +1,6 @@
 // CRUD по таблице users.
+// Список должностей собираем подзапросом с json_agg, чтобы за один SELECT
+// получить пользователя и все его должности.
 
 import '../db/connection.dart';
 import '../models/user.dart';
@@ -7,9 +9,20 @@ class UserRepository {
   UserRepository(this._db);
   final Database _db;
 
+  /// Подзапрос с массивом должностей. COALESCE даёт пустой массив,
+  /// если ни одна должность не привязана.
+  static const _positionsSubquery =
+      "(SELECT COALESCE(json_agg(json_build_object('id', p.id, 'name', p.name) "
+      "ORDER BY p.name), '[]'::json) "
+      "FROM user_positions up JOIN positions p ON p.id = up.position_id "
+      "WHERE up.user_id = u.id) AS positions";
+
+  static const _selectCols =
+      'u.id, u.email, u.full_name, u.role, $_positionsSubquery, u.created_at';
+
   Future<User?> findById(String id) async {
     final res = await _db.execute(
-      'SELECT id,email,full_name,role,position,created_at FROM users WHERE id = @i',
+      'SELECT $_selectCols FROM users u WHERE u.id = @i',
       parameters: {'i': id},
     );
     if (res.isEmpty) return null;
@@ -18,7 +31,7 @@ class UserRepository {
 
   Future<User?> findByEmail(String email) async {
     final res = await _db.execute(
-      'SELECT id,email,full_name,role,position,created_at FROM users WHERE lower(email) = lower(@e)',
+      'SELECT $_selectCols FROM users u WHERE lower(u.email) = lower(@e)',
       parameters: {'e': email.trim()},
     );
     if (res.isEmpty) return null;
@@ -39,21 +52,23 @@ class UserRepository {
     required String passwordHash,
     required String fullName,
     required UserRole role,
-    String? position,
+    List<String> positionIds = const [],
   }) async {
     final res = await _db.execute(
-      'INSERT INTO users (email,password_hash,full_name,role,position) '
-      'VALUES (@e,@h,@n,@r,@p) '
-      'RETURNING id,email,full_name,role,position,created_at',
+      'INSERT INTO users (email, password_hash, full_name, role) '
+      'VALUES (@e,@h,@n,@r) RETURNING id',
       parameters: {
         'e': email,
         'h': passwordHash,
         'n': fullName,
         'r': role.name,
-        'p': position,
       },
     );
-    return User.fromRow(_row(res.first, res.schema.columns));
+    final id = res.first[0].toString();
+    if (positionIds.isNotEmpty) {
+      await setPositions(id, positionIds);
+    }
+    return (await findById(id))!;
   }
 
   Future<void> updatePasswordHash(String id, String hash) async {
@@ -64,38 +79,45 @@ class UserRepository {
   }
 
   Future<User> updateRole(String id, UserRole role) async {
-    final res = await _db.execute(
-      'UPDATE users SET role = @r WHERE id = @i '
-      'RETURNING id,email,full_name,role,position,created_at',
+    await _db.execute(
+      'UPDATE users SET role = @r WHERE id = @i',
       parameters: {'r': role.name, 'i': id},
     );
-    return User.fromRow(_row(res.first, res.schema.columns));
+    return (await findById(id))!;
   }
 
-  Future<User> updatePosition(String id, String? position) async {
-    final res = await _db.execute(
-      'UPDATE users SET position = @p WHERE id = @i '
-      'RETURNING id,email,full_name,role,position,created_at',
-      parameters: {'p': position, 'i': id},
+  /// Полная замена набора должностей у пользователя.
+  /// [positionIds] = [] снимет все должности.
+  Future<User> setPositions(String userId, List<String> positionIds) async {
+    await _db.execute(
+      'DELETE FROM user_positions WHERE user_id = @u',
+      parameters: {'u': userId},
     );
-    return User.fromRow(_row(res.first, res.schema.columns));
+    for (final pid in positionIds.toSet()) {
+      await _db.execute(
+        'INSERT INTO user_positions (user_id, position_id) VALUES (@u, @p) '
+        'ON CONFLICT DO NOTHING',
+        parameters: {'u': userId, 'p': pid},
+      );
+    }
+    return (await findById(userId))!;
   }
 
   Future<List<User>> list({UserRole? role, String? search, int limit = 100}) async {
     final clauses = <String>[];
     final params = <String, Object?>{'lim': limit};
     if (role != null) {
-      clauses.add('role = @r');
+      clauses.add('u.role = @r');
       params['r'] = role.name;
     }
     if (search != null && search.isNotEmpty) {
-      clauses.add('(lower(email) LIKE @s OR lower(full_name) LIKE @s)');
+      clauses.add('(lower(u.email) LIKE @s OR lower(u.full_name) LIKE @s)');
       params['s'] = '%${search.toLowerCase()}%';
     }
     final where = clauses.isEmpty ? '' : 'WHERE ${clauses.join(' AND ')}';
     final res = await _db.execute(
-      'SELECT id,email,full_name,role,position,created_at FROM users '
-      '$where ORDER BY created_at DESC LIMIT @lim',
+      'SELECT $_selectCols FROM users u '
+      '$where ORDER BY u.created_at DESC LIMIT @lim',
       parameters: params,
     );
     return res

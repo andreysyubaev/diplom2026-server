@@ -8,6 +8,8 @@
 //   - не нужно тащить кучу глобальных синглтонов
 
 import '../db/connection.dart';
+import '../repositories/notification_repository.dart';
+import '../repositories/position_repository.dart';
 import '../repositories/result_repository.dart';
 import '../repositories/subject_repository.dart';
 import '../repositories/subtheme_repository.dart';
@@ -18,6 +20,7 @@ import 'auth_service.dart';
 import 'code_service.dart';
 import 'jwt_service.dart';
 import 'password_service.dart';
+import 'scheduled_notifier.dart';
 import 'upload_service.dart';
 
 class ServiceContainer {
@@ -29,6 +32,8 @@ class ServiceContainer {
     required this.subthemes,
     required this.tests,
     required this.results,
+    required this.notifications,
+    required this.positions,
     required this.passwords,
     required this.jwt,
     required this.auth,
@@ -43,6 +48,8 @@ class ServiceContainer {
   final SubthemeRepository subthemes;
   final TestRepository tests;
   final ResultRepository results;
+  final NotificationRepository notifications;
+  final PositionRepository positions;
   final PasswordService passwords;
   final JwtService jwt;
   final AuthService auth;
@@ -56,6 +63,8 @@ class ServiceContainer {
     final subthemes = SubthemeRepository(db);
     final tests = TestRepository(db);
     final results = ResultRepository(db);
+    final notifications = NotificationRepository(db);
+    final positions = PositionRepository(db);
     final passwords = PasswordService();
     final jwt = JwtService();
     final codes = CodeService(db);
@@ -66,6 +75,15 @@ class ServiceContainer {
       passwords: passwords,
       jwt: jwt,
     );
+
+    // Запускаем фоновый шедулер. Раз в минуту проверяет, не пора ли
+    // уведомить о выходе запланированных подтем/тем.
+    ScheduledNotifier(
+      db: db,
+      notifications: notifications,
+      subjects: subjects,
+    ).start();
+
     return ServiceContainer(
       db: db,
       users: users,
@@ -74,6 +92,8 @@ class ServiceContainer {
       subthemes: subthemes,
       tests: tests,
       results: results,
+      notifications: notifications,
+      positions: positions,
       passwords: passwords,
       jwt: jwt,
       auth: auth,

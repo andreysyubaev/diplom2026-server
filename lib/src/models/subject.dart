@@ -39,15 +39,20 @@ class SubjectCode {
     required this.code,
     required this.expiresAt,
     required this.refreshInSeconds,
+    this.locked = false,
   });
 
   final String code;
   final DateTime expiresAt;
   final int refreshInSeconds;
 
+  /// Заблокирован ли код (не будет автоматически меняться).
+  final bool locked;
+
   Map<String, dynamic> toJson() => {
         'code': code,
         'expiresAt': expiresAt.toIso8601String(),
         'refreshInSeconds': refreshInSeconds,
+        'locked': locked,
       };
 }

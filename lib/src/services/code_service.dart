@@ -8,10 +8,13 @@
 //      предмета, у которого expires_at > now, и сверяем регистронезависимо.
 //
 // Это даёт эффект "код меняется каждые ~5 минут".
+//
+// ЗАМОК:
+//   Когда subjects.code_locked = TRUE — код не меняется. При каждом запросе
+//   currentForSubject expires_at у текущего кода продлевается на TTL,
+//   так что он всегда «живой». При снятии лока код истечёт обычным образом.
 
 import 'dart:math';
-
-import 'package:postgres/postgres.dart';
 
 import '../config/env.dart';
 import '../db/connection.dart';
@@ -26,9 +29,12 @@ class CodeService {
   final Database _db;
   final Duration _ttl;
 
-  /// Получить или сгенерировать актуальный код для предмета.
+  /// Возвращает текущий код предмета. Если кода нет или он истёк —
+  /// генерирует новый. Если предмет залочен — продлевает срок действия.
   Future<SubjectCode> currentForSubject(String subjectId) async {
     final now = DateTime.now().toUtc();
+    final locked = await _isLocked(subjectId);
+
     final found = await _db.execute(
       'SELECT code, expires_at FROM subject_codes '
       'WHERE subject_id = @s AND expires_at > @n '
@@ -37,13 +43,24 @@ class CodeService {
     );
     if (found.isNotEmpty) {
       final code = found.first[0]! as String;
-      final exp = found.first[1]! as DateTime;
+      var exp = found.first[1]! as DateTime;
+      // Если залочено — продлеваем срок действия, чтобы код «не остыл».
+      if (locked) {
+        exp = now.add(_ttl);
+        await _db.execute(
+          'UPDATE subject_codes SET expires_at = @e '
+          'WHERE subject_id = @s AND code = @c',
+          parameters: {'e': exp, 's': subjectId, 'c': code},
+        );
+      }
       return SubjectCode(
         code: code,
         expiresAt: exp,
         refreshInSeconds: exp.difference(now).inSeconds,
+        locked: locked,
       );
     }
+    // Кода нет либо истёк — генерируем новый.
     final newCode = _generateCode();
     final expires = now.add(_ttl);
     await _db.execute(
@@ -55,7 +72,51 @@ class CodeService {
       code: newCode,
       expiresAt: expires,
       refreshInSeconds: _ttl.inSeconds,
+      locked: locked,
     );
+  }
+
+  /// Принудительно сгенерировать новый код для предмета.
+  /// Старые коды помечаются истёкшими, чтобы по ним нельзя было войти.
+  Future<SubjectCode> rotate(String subjectId) async {
+    final now = DateTime.now().toUtc();
+    // Все имеющиеся коды этого предмета помечаем уже истёкшими.
+    await _db.execute(
+      'UPDATE subject_codes SET expires_at = @n '
+      'WHERE subject_id = @s AND expires_at > @n',
+      parameters: {'s': subjectId, 'n': now},
+    );
+    final newCode = _generateCode();
+    final expires = now.add(_ttl);
+    await _db.execute(
+      'INSERT INTO subject_codes (subject_id, code, expires_at) '
+      'VALUES (@s, @c, @e)',
+      parameters: {'s': subjectId, 'c': newCode, 'e': expires},
+    );
+    final locked = await _isLocked(subjectId);
+    return SubjectCode(
+      code: newCode,
+      expiresAt: expires,
+      refreshInSeconds: _ttl.inSeconds,
+      locked: locked,
+    );
+  }
+
+  /// Включить или выключить замок на смену кода.
+  Future<void> setLocked(String subjectId, bool locked) async {
+    await _db.execute(
+      'UPDATE subjects SET code_locked = @l WHERE id = @s',
+      parameters: {'l': locked, 's': subjectId},
+    );
+  }
+
+  Future<bool> _isLocked(String subjectId) async {
+    final res = await _db.execute(
+      'SELECT code_locked FROM subjects WHERE id = @s',
+      parameters: {'s': subjectId},
+    );
+    if (res.isEmpty) return false;
+    return (res.first[0] as bool?) ?? false;
   }
 
   /// Найти предмет по введённому коду. Возвращает id предмета или кидает 404.

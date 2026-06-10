@@ -15,10 +15,17 @@ import '../routes/teacher/subthemes/[id]/test.dart' as teacher_subthemes_$id_tes
 import '../routes/teacher/subthemes/[id]/results.dart' as teacher_subthemes_$id_results;
 import '../routes/teacher/subthemes/[id]/index.dart' as teacher_subthemes_$id_index;
 import '../routes/teacher/subthemes/[id]/images.dart' as teacher_subthemes_$id_images;
+import '../routes/teacher/subthemes/[id]/attachments.dart' as teacher_subthemes_$id_attachments;
 import '../routes/teacher/subjects/index.dart' as teacher_subjects_index;
 import '../routes/teacher/subjects/[id]/themes.dart' as teacher_subjects_$id_themes;
 import '../routes/teacher/subjects/[id]/results.dart' as teacher_subjects_$id_results;
-import '../routes/teacher/subjects/[id]/code.dart' as teacher_subjects_$id_code;
+import '../routes/teacher/subjects/[id]/students/index.dart' as teacher_subjects_$id_students_index;
+import '../routes/teacher/subjects/[id]/students/[studentId].dart' as teacher_subjects_$id_students_$student_id;
+import '../routes/teacher/subjects/[id]/code/rotate.dart' as teacher_subjects_$id_code_rotate;
+import '../routes/teacher/subjects/[id]/code/lock.dart' as teacher_subjects_$id_code_lock;
+import '../routes/teacher/subjects/[id]/code/index.dart' as teacher_subjects_$id_code_index;
+import '../routes/teacher/results/[id].dart' as teacher_results_$id;
+import '../routes/teacher/results/[id]/retake.dart' as teacher_results_$id_retake;
 import '../routes/student/results.dart' as student_results;
 import '../routes/student/join.dart' as student_join;
 import '../routes/student/themes/[id]/subthemes.dart' as student_themes_$id_subthemes;
@@ -28,14 +35,21 @@ import '../routes/student/subthemes/[id]/index.dart' as student_subthemes_$id_in
 import '../routes/student/subjects/index.dart' as student_subjects_index;
 import '../routes/student/subjects/[id]/themes.dart' as student_subjects_$id_themes;
 import '../routes/me/index.dart' as me_index;
+import '../routes/me/notifications/unread_count.dart' as me_notifications_unread_count;
+import '../routes/me/notifications/read_all.dart' as me_notifications_read_all;
+import '../routes/me/notifications/index.dart' as me_notifications_index;
+import '../routes/me/notifications/[id]/read.dart' as me_notifications_$id_read;
 import '../routes/auth/register.dart' as auth_register;
 import '../routes/auth/refresh.dart' as auth_refresh;
 import '../routes/auth/login.dart' as auth_login;
 import '../routes/auth/change_password.dart' as auth_change_password;
 import '../routes/admin/users/index.dart' as admin_users_index;
 import '../routes/admin/users/[id]/role.dart' as admin_users_$id_role;
+import '../routes/admin/users/[id]/positions.dart' as admin_users_$id_positions;
 import '../routes/admin/subjects/index.dart' as admin_subjects_index;
 import '../routes/admin/subjects/[id]/index.dart' as admin_subjects_$id_index;
+import '../routes/admin/positions/index.dart' as admin_positions_index;
+import '../routes/admin/positions/[id].dart' as admin_positions_$id;
 
 import '../routes/_middleware.dart' as middleware;
 import '../routes/uploads/_middleware.dart' as uploads_middleware;
@@ -66,17 +80,24 @@ Handler buildRootHandler() {
     ..mount('/teacher/subthemes/<id>', (context,id,) => buildTeacherSubthemes$idHandler(id,)(context))
     ..mount('/teacher/subjects', (context) => buildTeacherSubjectsHandler()(context))
     ..mount('/teacher/subjects/<id>', (context,id,) => buildTeacherSubjects$idHandler(id,)(context))
+    ..mount('/teacher/subjects/<id>/students', (context,id,) => buildTeacherSubjects$idStudentsHandler(id,)(context))
+    ..mount('/teacher/subjects/<id>/code', (context,id,) => buildTeacherSubjects$idCodeHandler(id,)(context))
+    ..mount('/teacher/results', (context) => buildTeacherResultsHandler()(context))
+    ..mount('/teacher/results/<id>', (context,id,) => buildTeacherResults$idHandler(id,)(context))
     ..mount('/student', (context) => buildStudentHandler()(context))
     ..mount('/student/themes/<id>', (context,id,) => buildStudentThemes$idHandler(id,)(context))
     ..mount('/student/subthemes/<id>', (context,id,) => buildStudentSubthemes$idHandler(id,)(context))
     ..mount('/student/subjects', (context) => buildStudentSubjectsHandler()(context))
     ..mount('/student/subjects/<id>', (context,id,) => buildStudentSubjects$idHandler(id,)(context))
     ..mount('/me', (context) => buildMeHandler()(context))
+    ..mount('/me/notifications', (context) => buildMeNotificationsHandler()(context))
+    ..mount('/me/notifications/<id>', (context,id,) => buildMeNotifications$idHandler(id,)(context))
     ..mount('/auth', (context) => buildAuthHandler()(context))
     ..mount('/admin/users', (context) => buildAdminUsersHandler()(context))
     ..mount('/admin/users/<id>', (context,id,) => buildAdminUsers$idHandler(id,)(context))
     ..mount('/admin/subjects', (context) => buildAdminSubjectsHandler()(context))
-    ..mount('/admin/subjects/<id>', (context,id,) => buildAdminSubjects$idHandler(id,)(context));
+    ..mount('/admin/subjects/<id>', (context,id,) => buildAdminSubjects$idHandler(id,)(context))
+    ..mount('/admin/positions', (context) => buildAdminPositionsHandler()(context));
   return pipeline.addHandler(router);
 }
 
@@ -111,7 +132,7 @@ Handler buildTeacherThemes$idHandler(String id,) {
 Handler buildTeacherSubthemes$idHandler(String id,) {
   final pipeline = const Pipeline().addMiddleware(teacher_middleware.middleware);
   final router = Router()
-    ..all('/images', (context) => teacher_subthemes_$id_images.onRequest(context,id,))..all('/results', (context) => teacher_subthemes_$id_results.onRequest(context,id,))..all('/test', (context) => teacher_subthemes_$id_test.onRequest(context,id,))..all('/', (context) => teacher_subthemes_$id_index.onRequest(context,id,));
+    ..all('/attachments', (context) => teacher_subthemes_$id_attachments.onRequest(context,id,))..all('/images', (context) => teacher_subthemes_$id_images.onRequest(context,id,))..all('/results', (context) => teacher_subthemes_$id_results.onRequest(context,id,))..all('/test', (context) => teacher_subthemes_$id_test.onRequest(context,id,))..all('/', (context) => teacher_subthemes_$id_index.onRequest(context,id,));
   return pipeline.addHandler(router);
 }
 
@@ -125,7 +146,35 @@ Handler buildTeacherSubjectsHandler() {
 Handler buildTeacherSubjects$idHandler(String id,) {
   final pipeline = const Pipeline().addMiddleware(teacher_middleware.middleware);
   final router = Router()
-    ..all('/code', (context) => teacher_subjects_$id_code.onRequest(context,id,))..all('/results', (context) => teacher_subjects_$id_results.onRequest(context,id,))..all('/themes', (context) => teacher_subjects_$id_themes.onRequest(context,id,));
+    ..all('/results', (context) => teacher_subjects_$id_results.onRequest(context,id,))..all('/themes', (context) => teacher_subjects_$id_themes.onRequest(context,id,));
+  return pipeline.addHandler(router);
+}
+
+Handler buildTeacherSubjects$idStudentsHandler(String id,) {
+  final pipeline = const Pipeline().addMiddleware(teacher_middleware.middleware);
+  final router = Router()
+    ..all('/<studentId>', (context,studentId,) => teacher_subjects_$id_students_$student_id.onRequest(context,id,studentId,))..all('/', (context) => teacher_subjects_$id_students_index.onRequest(context,id,));
+  return pipeline.addHandler(router);
+}
+
+Handler buildTeacherSubjects$idCodeHandler(String id,) {
+  final pipeline = const Pipeline().addMiddleware(teacher_middleware.middleware);
+  final router = Router()
+    ..all('/lock', (context) => teacher_subjects_$id_code_lock.onRequest(context,id,))..all('/rotate', (context) => teacher_subjects_$id_code_rotate.onRequest(context,id,))..all('/', (context) => teacher_subjects_$id_code_index.onRequest(context,id,));
+  return pipeline.addHandler(router);
+}
+
+Handler buildTeacherResultsHandler() {
+  final pipeline = const Pipeline().addMiddleware(teacher_middleware.middleware);
+  final router = Router()
+    ..all('/<id>', (context,id,) => teacher_results_$id.onRequest(context,id,));
+  return pipeline.addHandler(router);
+}
+
+Handler buildTeacherResults$idHandler(String id,) {
+  final pipeline = const Pipeline().addMiddleware(teacher_middleware.middleware);
+  final router = Router()
+    ..all('/retake', (context) => teacher_results_$id_retake.onRequest(context,id,));
   return pipeline.addHandler(router);
 }
 
@@ -171,6 +220,20 @@ Handler buildMeHandler() {
   return pipeline.addHandler(router);
 }
 
+Handler buildMeNotificationsHandler() {
+  final pipeline = const Pipeline().addMiddleware(me_middleware.middleware);
+  final router = Router()
+    ..all('/read_all', (context) => me_notifications_read_all.onRequest(context,))..all('/unread_count', (context) => me_notifications_unread_count.onRequest(context,))..all('/', (context) => me_notifications_index.onRequest(context,));
+  return pipeline.addHandler(router);
+}
+
+Handler buildMeNotifications$idHandler(String id,) {
+  final pipeline = const Pipeline().addMiddleware(me_middleware.middleware);
+  final router = Router()
+    ..all('/read', (context) => me_notifications_$id_read.onRequest(context,id,));
+  return pipeline.addHandler(router);
+}
+
 Handler buildAuthHandler() {
   final pipeline = const Pipeline().addMiddleware(auth_middleware.middleware);
   final router = Router()
@@ -188,7 +251,7 @@ Handler buildAdminUsersHandler() {
 Handler buildAdminUsers$idHandler(String id,) {
   final pipeline = const Pipeline().addMiddleware(admin_middleware.middleware);
   final router = Router()
-    ..all('/role', (context) => admin_users_$id_role.onRequest(context,id,));
+    ..all('/positions', (context) => admin_users_$id_positions.onRequest(context,id,))..all('/role', (context) => admin_users_$id_role.onRequest(context,id,));
   return pipeline.addHandler(router);
 }
 
@@ -203,6 +266,13 @@ Handler buildAdminSubjects$idHandler(String id,) {
   final pipeline = const Pipeline().addMiddleware(admin_middleware.middleware);
   final router = Router()
     ..all('/', (context) => admin_subjects_$id_index.onRequest(context,id,));
+  return pipeline.addHandler(router);
+}
+
+Handler buildAdminPositionsHandler() {
+  final pipeline = const Pipeline().addMiddleware(admin_middleware.middleware);
+  final router = Router()
+    ..all('/<id>', (context,id,) => admin_positions_$id.onRequest(context,id,))..all('/', (context) => admin_positions_index.onRequest(context,));
   return pipeline.addHandler(router);
 }
 

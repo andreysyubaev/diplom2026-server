@@ -17,7 +17,19 @@ Future<Response> onRequest(RequestContext context) async {
     final subjectId = await context.services.codes.resolveSubjectId(code);
     final subj = await context.services.subjects.findById(subjectId);
     if (subj == null) throw ApiError.notFound('Предмет не найден');
+    // Дважды по коду в один и тот же предмет — не уведомляем повторно.
+    final wasJoined = await context.services.subjects
+        .isStudentJoined(subjectId, context.currentUser.id);
     await context.services.subjects.addStudent(subjectId, context.currentUser.id);
+    if (!wasJoined && subj.teacherId != null) {
+      await context.services.notifications.create(
+        userId: subj.teacherId!,
+        type: 'student_joined',
+        title: 'Новый студент в предмете',
+        body: '${context.currentUser.fullName} присоединился к «${subj.name}».',
+        data: {'subjectId': subjectId, 'studentId': context.currentUser.id},
+      );
+    }
     return jsonOk(subj.toJson());
   });
 }

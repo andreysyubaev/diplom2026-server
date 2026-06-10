@@ -11,6 +11,7 @@ class TestResult {
     required this.percentage,
     this.grade,
     required this.isFirstAttempt,
+    this.isRetake = false,
     required this.completedAt,
   });
 
@@ -25,7 +26,11 @@ class TestResult {
   final num percentage;
   final int? grade;
   final bool isFirstAttempt;
+  final bool isRetake;
   final DateTime completedAt;
+
+  /// Засчитана ли попытка «на оценку» (первая или пересдача).
+  bool get isGraded => isFirstAttempt || isRetake;
 
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -39,6 +44,8 @@ class TestResult {
         'percentage': percentage,
         'grade': grade,
         'isFirstAttempt': isFirstAttempt,
+        'isRetake': isRetake,
+        'isGraded': isGraded,
         'completedAt': completedAt.toIso8601String(),
       };
 
@@ -56,6 +63,7 @@ class TestResult {
         percentage: _toNum(row['percentage']),
         grade: row['grade'] == null ? null : (row['grade'] as num).toInt(),
         isFirstAttempt: row['is_first_attempt'] as bool,
+        isRetake: (row['is_retake'] as bool?) ?? false,
         completedAt: row['completed_at'] as DateTime,
       );
 

@@ -126,7 +126,7 @@ class AuthService {
     required String email,
     required String password,
     required String fullName,
-    String? position,
+    List<String> positionIds = const [],
   }) async {
     _validateEmail(email);
     final err = passwords.validate(password);
@@ -140,7 +140,7 @@ class AuthService {
       passwordHash: hash,
       fullName: fullName.trim(),
       role: UserRole.teacher,
-      position: position?.trim(),
+      positionIds: positionIds,
     );
   }
 

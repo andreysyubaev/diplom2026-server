@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 enum UserRole {
   admin,
   teacher,
@@ -13,7 +15,7 @@ class User {
     required this.email,
     required this.fullName,
     required this.role,
-    this.position,
+    this.positions = const [],
     required this.createdAt,
   });
 
@@ -21,7 +23,11 @@ class User {
   final String email;
   final String fullName;
   final UserRole role;
-  final String? position;
+
+  /// Все назначенные должности (для preподов).
+  /// У student / admin всегда пустой список.
+  final List<UserPosition> positions;
+
   final DateTime createdAt;
 
   Map<String, dynamic> toJson() => {
@@ -29,7 +35,7 @@ class User {
         'email': email,
         'fullName': fullName,
         'role': role.name,
-        'position': position,
+        'positions': positions.map((p) => p.toJson()).toList(),
         'createdAt': createdAt.toIso8601String(),
       };
 
@@ -38,7 +44,35 @@ class User {
         email: row['email'] as String,
         fullName: row['full_name'] as String,
         role: UserRole.parse(row['role'] as String),
-        position: row['position'] as String?,
+        positions: _parsePositions(row['positions']),
         createdAt: row['created_at'] as DateTime,
       );
+
+  static List<UserPosition> _parsePositions(Object? raw) {
+    if (raw == null) return const [];
+    final dynamic decoded;
+    if (raw is String) {
+      if (raw.isEmpty) return const [];
+      decoded = jsonDecode(raw);
+    } else {
+      decoded = raw;
+    }
+    if (decoded is! List) return const [];
+    return decoded
+        .whereType<Map>()
+        .map((m) => UserPosition(
+              id: m['id'].toString(),
+              name: m['name'] as String,
+            ))
+        .toList();
+  }
+}
+
+/// Лёгкая структура «id+name» для встраивания в JSON ответа.
+class UserPosition {
+  const UserPosition({required this.id, required this.name});
+  final String id;
+  final String name;
+
+  Map<String, dynamic> toJson() => {'id': id, 'name': name};
 }

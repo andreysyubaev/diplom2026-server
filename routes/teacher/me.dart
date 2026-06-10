@@ -1,5 +1,6 @@
-// PATCH /teacher/me  — преподаватель задаёт/меняет свою должность.
-// Тело: { "position": "доцент кафедры математики" }
+// PATCH /teacher/me — оставлен ради совместимости со старым клиентом,
+// но теперь возвращает 403: должность преподавателю назначает только
+// администратор, а сам преподаватель её менять не может.
 
 import 'package:college_app_server/src/http/context.dart';
 import 'package:college_app_server/src/http/responses.dart';
@@ -11,10 +12,8 @@ Future<Response> onRequest(RequestContext context) async {
     return errorResponse(ApiError(405, 'Метод не поддерживается'));
   }
   return runSafely(() async {
-    final body = await readJson(context.request);
-    final position = body.optString('position');
-    final user =
-        await context.services.users.updatePosition(context.currentUser.id, position);
-    return jsonOk(user.toJson());
+    throw ApiError.forbidden(
+      'Должность преподавателю назначает администратор.',
+    );
   });
 }

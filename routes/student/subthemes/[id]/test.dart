@@ -23,6 +23,23 @@ Future<Response> onRequest(RequestContext context, String id) async {
     }
     final test = await context.services.tests.findBySubthemeId(id);
     if (test == null) throw ApiError.notFound('Тест ещё не создан');
-    return jsonOk(test.toStudentJson());
+
+    // Подсказка студенту: пойдёт ли следующая попытка «на оценку».
+    // Идёт, если это первая попытка ИЛИ препод выдал разрешение на пересдачу.
+    final priorAttempts = await context.services.results.listForStudent(
+      studentId: context.currentUser.id,
+      subthemeId: id,
+    );
+    final hasRetake = await context.services.results.hasRetake(
+      studentId: context.currentUser.id,
+      subthemeId: id,
+    );
+    final nextGraded = priorAttempts.isEmpty || hasRetake;
+
+    return jsonOk({
+      ...test.toStudentJson(),
+      'nextAttemptGraded': nextGraded,
+      'retakeGranted': hasRetake,
+    });
   });
 }

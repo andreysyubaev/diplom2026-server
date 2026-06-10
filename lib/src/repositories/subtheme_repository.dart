@@ -1,5 +1,7 @@
 // CRUD по таблицам subthemes и subtheme_images.
 
+import 'dart:convert';
+
 import '../db/connection.dart';
 import '../models/subtheme.dart';
 import '../models/theme.dart';
@@ -8,10 +10,13 @@ class SubthemeRepository {
   SubthemeRepository(this._db);
   final Database _db;
 
+  /// Базовый список колонок для SELECT — чтобы не забыть content_blocks.
+  static const _cols =
+      'id, theme_id, title, content, content_blocks, sort_order, visibility, scheduled_at, created_at';
+
   Future<Subtheme?> findById(String id, {bool withDetails = true}) async {
     final res = await _db.execute(
-      'SELECT id, theme_id, title, content, sort_order, visibility, scheduled_at, created_at '
-      'FROM subthemes WHERE id = @i',
+      'SELECT $_cols FROM subthemes WHERE id = @i',
       parameters: {'i': id},
     );
     if (res.isEmpty) return null;
@@ -19,7 +24,13 @@ class SubthemeRepository {
     if (!withDetails) return Subtheme.fromRow(row);
     final hasTest = await _hasTest(id);
     final imgs = await listImages(id);
-    return Subtheme.fromRow(row, hasTest: hasTest, images: imgs);
+    final atts = await listAttachments(id);
+    return Subtheme.fromRow(
+      row,
+      hasTest: hasTest,
+      images: imgs,
+      attachments: atts,
+    );
   }
 
   Future<bool> _hasTest(String subthemeId) async {
@@ -32,7 +43,7 @@ class SubthemeRepository {
 
   Future<List<Subtheme>> listByTheme(String themeId) async {
     final res = await _db.execute(
-      'SELECT s.id, s.theme_id, s.title, s.content, s.sort_order, '
+      'SELECT s.id, s.theme_id, s.title, s.content, s.content_blocks, s.sort_order, '
       's.visibility, s.scheduled_at, s.created_at, '
       'EXISTS (SELECT 1 FROM tests t WHERE t.subtheme_id = s.id) AS has_test '
       'FROM subthemes s WHERE s.theme_id = @t '
@@ -49,18 +60,20 @@ class SubthemeRepository {
     required String themeId,
     required String title,
     String content = '',
+    List<Map<String, dynamic>>? contentBlocks,
     int sortOrder = 0,
     ContentVisibility visibility = ContentVisibility.draft,
     DateTime? scheduledAt,
   }) async {
     final res = await _db.execute(
-      'INSERT INTO subthemes (theme_id, title, content, sort_order, visibility, scheduled_at) '
-      'VALUES (@t,@ti,@c,@o,@v,@sa) '
-      'RETURNING id, theme_id, title, content, sort_order, visibility, scheduled_at, created_at',
+      'INSERT INTO subthemes (theme_id, title, content, content_blocks, sort_order, visibility, scheduled_at) '
+      'VALUES (@t,@ti,@c,@cb::jsonb,@o,@v,@sa) '
+      'RETURNING $_cols',
       parameters: {
         't': themeId,
         'ti': title,
         'c': content,
+        'cb': jsonEncode(contentBlocks ?? const []),
         'o': sortOrder,
         'v': visibility.toSql(),
         'sa': scheduledAt,
@@ -73,6 +86,7 @@ class SubthemeRepository {
     required String id,
     String? title,
     String? content,
+    List<Map<String, dynamic>>? contentBlocks,
     int? sortOrder,
     ContentVisibility? visibility,
     DateTime? scheduledAt,
@@ -88,6 +102,10 @@ class SubthemeRepository {
       sets.add('content = @c');
       params['c'] = content;
     }
+    if (contentBlocks != null) {
+      sets.add('content_blocks = @cb::jsonb');
+      params['cb'] = jsonEncode(contentBlocks);
+    }
     if (sortOrder != null) {
       sets.add('sort_order = @o');
       params['o'] = sortOrder;
@@ -102,7 +120,13 @@ class SubthemeRepository {
       sets.add('scheduled_at = @sa');
       params['sa'] = scheduledAt;
     }
+    // Если переводим в scheduled или меняем scheduled_at — сбрасываем
+    // флаг «уже уведомили», чтобы шедулер ещё раз сработал.
+    if (visibility == ContentVisibility.scheduled || scheduledAt != null) {
+      sets.add('scheduled_notified = FALSE');
+    }
     if (sets.isNotEmpty) {
+      sets.add('updated_at = NOW()');
       await _db.execute(
         'UPDATE subthemes SET ${sets.join(', ')} WHERE id = @i',
         parameters: params,
@@ -160,6 +184,69 @@ class SubthemeRepository {
     final res = await _db.execute(
       'DELETE FROM subtheme_images WHERE id = @i RETURNING file_path',
       parameters: {'i': imageId},
+    );
+    if (res.isEmpty) return null;
+    return res.first[0] as String?;
+  }
+
+  // ── вложенные файлы ───────────────────────────────────────────────
+
+  Future<List<SubthemeAttachment>> listAttachments(String subthemeId) async {
+    final res = await _db.execute(
+      'SELECT id, file_path, original_name, mime_type, size_bytes, sort_order '
+      'FROM subtheme_attachments WHERE subtheme_id = @s '
+      'ORDER BY sort_order, created_at',
+      parameters: {'s': subthemeId},
+    );
+    return res
+        .map((r) => SubthemeAttachment(
+              id: r[0].toString(),
+              filePath: r[1]! as String,
+              originalName: r[2]! as String,
+              mimeType: r[3]! as String,
+              sizeBytes: (r[4]! as num).toInt(),
+              sortOrder: r[5]! as int,
+            ))
+        .toList();
+  }
+
+  Future<SubthemeAttachment> addAttachment({
+    required String subthemeId,
+    required String filePath,
+    required String originalName,
+    required String mimeType,
+    required int sizeBytes,
+    int sortOrder = 0,
+  }) async {
+    final res = await _db.execute(
+      'INSERT INTO subtheme_attachments '
+      '(subtheme_id, file_path, original_name, mime_type, size_bytes, sort_order) '
+      'VALUES (@s,@f,@n,@m,@b,@o) '
+      'RETURNING id, file_path, original_name, mime_type, size_bytes, sort_order',
+      parameters: {
+        's': subthemeId,
+        'f': filePath,
+        'n': originalName,
+        'm': mimeType,
+        'b': sizeBytes,
+        'o': sortOrder,
+      },
+    );
+    final r = res.first;
+    return SubthemeAttachment(
+      id: r[0].toString(),
+      filePath: r[1]! as String,
+      originalName: r[2]! as String,
+      mimeType: r[3]! as String,
+      sizeBytes: (r[4]! as num).toInt(),
+      sortOrder: r[5]! as int,
+    );
+  }
+
+  Future<String?> removeAttachment(String attachmentId) async {
+    final res = await _db.execute(
+      'DELETE FROM subtheme_attachments WHERE id = @i RETURNING file_path',
+      parameters: {'i': attachmentId},
     );
     if (res.isEmpty) return null;
     return res.first[0] as String?;

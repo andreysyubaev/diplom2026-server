@@ -137,6 +137,27 @@ class SubjectRepository {
     );
   }
 
+  /// Список вступивших студентов с базовой инфой.
+  /// Возвращает мапы вида {id, fullName, email, joinedAt}.
+  Future<List<Map<String, dynamic>>> listStudents(String subjectId) async {
+    final res = await _db.execute(
+      'SELECT u.id, u.full_name, u.email, ss.joined_at '
+      'FROM subject_students ss '
+      'JOIN users u ON u.id = ss.student_id '
+      'WHERE ss.subject_id = @s '
+      'ORDER BY u.full_name',
+      parameters: {'s': subjectId},
+    );
+    return res.map((r) {
+      return {
+        'id': r[0].toString(),
+        'fullName': r[1] as String,
+        'email': r[2] as String,
+        'joinedAt': (r[3] as DateTime?)?.toIso8601String(),
+      };
+    }).toList();
+  }
+
   static Map<String, dynamic> _namedRow(
     List<dynamic> row,
     List<dynamic> columns,

@@ -71,6 +71,30 @@ Future<Response> onRequest(RequestContext context, String id) async {
       answers: answersRaw,
     );
 
+    // Уведомляем препода о зачётной сдаче (первая попытка или пересдача).
+    if (result.isFirstAttempt || result.isRetake) {
+      final subject =
+          await context.services.subjects.findById(theme.subjectId);
+      if (subject != null && subject.teacherId != null) {
+        final gradeText = result.grade == null ? '—' : '${result.grade}';
+        await context.services.notifications.create(
+          userId: subject.teacherId!,
+          type: 'test_submitted',
+          title: result.isRetake
+              ? 'Пересдача: новый результат'
+              : 'Тест сдан студентом',
+          body:
+              '${context.currentUser.fullName} сдал тест по «${sub.title}» '
+              'на $gradeText (${result.percentage.toStringAsFixed(0)}%).',
+          data: {
+            'subjectId': theme.subjectId,
+            'subthemeId': id,
+            'resultId': result.id,
+          },
+        );
+      }
+    }
+
     return jsonOk({
       ...result.toJson(),
       'details': details,
