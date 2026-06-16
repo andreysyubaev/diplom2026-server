@@ -1,0 +1,24 @@
+# Конфигурация деплоя для Amvera.
+# Amvera видит этот файл, подхватывает Dockerfile и поднимает контейнер.
+#
+# Документация: https://docs.amvera.ru/applications/configuration/yaml.html
+
+meta:
+  # Используем Docker — у нас есть собственный Dockerfile рядом.
+  environment: docker
+  toolchain:
+    name: docker
+    version: 24
+
+build:
+  # Путь к Dockerfile относительно корня репозитория.
+  dockerfilePath: ./Dockerfile
+
+run:
+  # На каком порту контейнер слушает входящие соединения.
+  # Сервер запускается через CMD в Dockerfile и слушает 8080.
+  containerPort: 8080
+
+  # Постоянный том для загруженных файлов (изображения подтем, вложения).
+  # БЕЗ ЭТОГО все uploads будут стираться при каждом перезапуске.
+  persistenceMount: /app/uploads
