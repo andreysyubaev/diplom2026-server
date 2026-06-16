@@ -96,6 +96,9 @@ class TestModel {
     required this.subthemeId,
     required this.gradeThresholds,
     required this.shuffleQuestions,
+    this.timeLimitMinutes,
+    this.availableFrom,
+    this.availableTo,
     this.questions = const [],
   });
 
@@ -105,6 +108,14 @@ class TestModel {
   /// Карта: "2","3","4","5" → процент.
   final Map<String, int> gradeThresholds;
   final bool shuffleQuestions;
+
+  /// Лимит времени на прохождение теста в минутах. null — без ограничения.
+  final int? timeLimitMinutes;
+
+  /// Окно доступности теста. NULL = без ограничения с соответствующей стороны.
+  final DateTime? availableFrom;
+  final DateTime? availableTo;
+
   final List<Question> questions;
 
   /// Считает оценку (2..5) по проценту правильных.
@@ -123,6 +134,9 @@ class TestModel {
         'subthemeId': subthemeId,
         'gradeThresholds': gradeThresholds,
         'shuffleQuestions': shuffleQuestions,
+        'timeLimitMinutes': timeLimitMinutes,
+        'availableFrom': availableFrom?.toUtc().toIso8601String(),
+        'availableTo': availableTo?.toUtc().toIso8601String(),
         'questions': questions.map((q) => q.toTeacherJson()).toList(),
       };
 
@@ -132,6 +146,9 @@ class TestModel {
     return {
       'id': id,
       'subthemeId': subthemeId,
+      'timeLimitMinutes': timeLimitMinutes,
+      'availableFrom': availableFrom?.toUtc().toIso8601String(),
+      'availableTo': availableTo?.toUtc().toIso8601String(),
       'questions': qs.map((q) => q.toStudentJson()).toList(),
     };
   }
@@ -150,6 +167,11 @@ class TestModel {
       subthemeId: row['subtheme_id'].toString(),
       gradeThresholds: thresholds,
       shuffleQuestions: row['shuffle_questions'] as bool,
+      timeLimitMinutes: row['time_limit_minutes'] == null
+          ? null
+          : (row['time_limit_minutes'] as num).toInt(),
+      availableFrom: row['available_from'] as DateTime?,
+      availableTo: row['available_to'] as DateTime?,
       questions: questions,
     );
   }

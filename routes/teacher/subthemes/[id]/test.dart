@@ -70,10 +70,32 @@ Future<Response> onRequest(RequestContext context, String id) async {
           normalized.add(_validateQuestion(q, i));
         }
 
+        // Лимит времени (минуты). null/0/отрицательное — без ограничения.
+        final tlmRaw = body['timeLimitMinutes'];
+        int? timeLimit;
+        if (tlmRaw is num) {
+          final v = tlmRaw.toInt();
+          timeLimit = v > 0 ? v : null;
+        }
+
+        // Окно доступности теста (ISO 8601 строки или null).
+        final availableFrom =
+            _parseIsoDate(body['availableFrom'], 'availableFrom');
+        final availableTo = _parseIsoDate(body['availableTo'], 'availableTo');
+        if (availableFrom != null &&
+            availableTo != null &&
+            !availableTo.isAfter(availableFrom)) {
+          throw ApiError.badRequest(
+              'Дата окончания доступности должна быть позже даты начала');
+        }
+
         final test = await context.services.tests.upsert(
           subthemeId: id,
           gradeThresholds: thresholds,
           shuffleQuestions: (body['shuffleQuestions'] as bool?) ?? false,
+          timeLimitMinutes: timeLimit,
+          availableFrom: availableFrom,
+          availableTo: availableTo,
           questions: normalized,
         );
         return jsonOk(test.toTeacherJson());
@@ -82,6 +104,16 @@ Future<Response> onRequest(RequestContext context, String id) async {
         return errorResponse(ApiError(405, 'Метод не поддерживается'));
     }
   });
+}
+
+DateTime? _parseIsoDate(dynamic raw, String fieldName) {
+  if (raw == null) return null;
+  if (raw is! String || raw.trim().isEmpty) return null;
+  try {
+    return DateTime.parse(raw).toUtc();
+  } catch (_) {
+    throw ApiError.badRequest('Поле $fieldName должно быть датой ISO 8601');
+  }
 }
 
 void _validateThresholds(Map<String, int> t) {

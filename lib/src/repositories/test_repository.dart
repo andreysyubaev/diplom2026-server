@@ -13,7 +13,7 @@ class TestRepository {
 
   Future<TestModel?> findBySubthemeId(String subthemeId, {bool withQuestions = true}) async {
     final res = await _db.execute(
-      'SELECT id, subtheme_id, grade_thresholds, shuffle_questions '
+      'SELECT id, subtheme_id, grade_thresholds, shuffle_questions, time_limit_minutes, available_from, available_to '
       'FROM tests WHERE subtheme_id = @s',
       parameters: {'s': subthemeId},
     );
@@ -26,7 +26,7 @@ class TestRepository {
 
   Future<TestModel?> findById(String id, {bool withQuestions = true}) async {
     final res = await _db.execute(
-      'SELECT id, subtheme_id, grade_thresholds, shuffle_questions '
+      'SELECT id, subtheme_id, grade_thresholds, shuffle_questions, time_limit_minutes, available_from, available_to '
       'FROM tests WHERE id = @i',
       parameters: {'i': id},
     );
@@ -42,6 +42,9 @@ class TestRepository {
     required String subthemeId,
     required Map<String, int> gradeThresholds,
     required bool shuffleQuestions,
+    int? timeLimitMinutes,
+    DateTime? availableFrom,
+    DateTime? availableTo,
     required List<Map<String, dynamic>> questions,
   }) async {
     return _db.runTx<TestModel>((tx) async {
@@ -53,13 +56,18 @@ class TestRepository {
       if (existing.isEmpty) {
         final created = await tx.execute(
           Sql.named(
-            'INSERT INTO tests (subtheme_id, grade_thresholds, shuffle_questions) '
-            'VALUES (@s, @g::jsonb, @sh) RETURNING id',
+            'INSERT INTO tests '
+            '(subtheme_id, grade_thresholds, shuffle_questions, '
+            ' time_limit_minutes, available_from, available_to) '
+            'VALUES (@s, @g::jsonb, @sh, @tl, @af, @at) RETURNING id',
           ),
           parameters: {
             's': subthemeId,
             'g': jsonEncode(gradeThresholds),
             'sh': shuffleQuestions,
+            'tl': timeLimitMinutes,
+            'af': availableFrom?.toUtc(),
+            'at': availableTo?.toUtc(),
           },
         );
         testId = created.first[0].toString();
@@ -67,12 +75,17 @@ class TestRepository {
         testId = existing.first[0].toString();
         await tx.execute(
           Sql.named(
-            'UPDATE tests SET grade_thresholds = @g::jsonb, shuffle_questions = @sh '
+            'UPDATE tests SET grade_thresholds = @g::jsonb, '
+            'shuffle_questions = @sh, time_limit_minutes = @tl, '
+            'available_from = @af, available_to = @at '
             'WHERE id = @i',
           ),
           parameters: {
             'g': jsonEncode(gradeThresholds),
             'sh': shuffleQuestions,
+            'tl': timeLimitMinutes,
+            'af': availableFrom?.toUtc(),
+            'at': availableTo?.toUtc(),
             'i': testId,
           },
         );
@@ -103,7 +116,7 @@ class TestRepository {
       }
       final loaded = await tx.execute(
         Sql.named(
-          'SELECT id, subtheme_id, grade_thresholds, shuffle_questions '
+          'SELECT id, subtheme_id, grade_thresholds, shuffle_questions, time_limit_minutes, available_from, available_to '
           'FROM tests WHERE id = @i',
         ),
         parameters: {'i': testId},
