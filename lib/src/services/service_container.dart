@@ -18,6 +18,7 @@ import '../repositories/theme_repository.dart';
 import '../repositories/user_repository.dart';
 import 'auth_service.dart';
 import 'code_service.dart';
+import 'copy_service.dart';
 import 'jwt_service.dart';
 import 'password_service.dart';
 import 'scheduled_notifier.dart';
@@ -39,6 +40,7 @@ class ServiceContainer {
     required this.auth,
     required this.codes,
     required this.uploads,
+    required this.copy,
   });
 
   final Database db;
@@ -55,6 +57,7 @@ class ServiceContainer {
   final AuthService auth;
   final CodeService codes;
   final UploadService uploads;
+  final CopyService copy;
 
   static Future<ServiceContainer> build(Database db) async {
     final users = UserRepository(db);
@@ -69,6 +72,13 @@ class ServiceContainer {
     final jwt = JwtService();
     final codes = CodeService(db);
     final uploads = UploadService();
+    final copy = CopyService(
+      themes: themes,
+      subthemes: subthemes,
+      tests: tests,
+      subjects: subjects,
+      uploads: uploads,
+    );
     final auth = AuthService(
       db,
       users: users,
@@ -99,6 +109,7 @@ class ServiceContainer {
       auth: auth,
       codes: codes,
       uploads: uploads,
+      copy: copy,
     );
   }
 }

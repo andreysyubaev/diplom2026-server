@@ -110,6 +110,22 @@ class UploadService {
     if (await f.exists()) await f.delete();
   }
 
+  /// Копирует файл по относительному пути, возвращает новый относительный путь.
+  Future<String> copyFile(String relativePath) async {
+    final source = resolve(relativePath);
+    if (!await source.exists()) {
+      throw ApiError.badRequest('Исходный файл не найден: $relativePath');
+    }
+    final dot = relativePath.lastIndexOf('.');
+    final ext = dot >= 0 ? relativePath.substring(dot) : '';
+    final id = const Uuid().v4();
+    final newRelative = '${id.substring(0, 2)}/${id.substring(2, 4)}/$id$ext';
+    final dest = File('$_dir/$newRelative');
+    await dest.create(recursive: true);
+    await source.copy(dest.path);
+    return newRelative;
+  }
+
   String _extForMime(String mime) {
     switch (mime) {
       case 'image/jpeg':
